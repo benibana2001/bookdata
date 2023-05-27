@@ -1,0 +1,22 @@
+{
+  "name": "bookdata",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "npx ts-node example/index.ts"
+  },
+  "author": "benibana2002",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^20.2.3",
+    "typescript": "^5.0.4"
+  },
+  "engines": {
+    "node": "18.16.0"
+  },
+  "dependencies": {
+    "ts-node": "^10.9.1"
+  },
+  "type": "module"
+}
