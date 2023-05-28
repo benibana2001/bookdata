@@ -1,10 +1,12 @@
 {
-  "name": "bookdata",
+  "name": "benibana_bookdata",
   "version": "1.0.0",
   "description": "",
   "main": "src/OpenBD.ts",
   "scripts": {
-    "test": "npx ts-node example/index.ts"
+    "test": "npx ts-node example/index.ts",
+    "build" : "npx esbuild src/OpenBD.ts --bundle --format=esm --outdir=dist && npm run build:types",
+    "build:types" : "npx tsc src/OpenBD.ts -declaration --emitDeclarationOnly --declarationDir dist"
   },
   "repository": {
     "type": "git",
@@ -14,6 +16,7 @@
   "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.2.3",
+    "esbuild": "^0.17.19",
     "typescript": "^5.0.4"
   },
   "engines": {
