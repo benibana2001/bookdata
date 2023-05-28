@@ -2,7 +2,7 @@
   "name": "bookdata",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/OpenBD.ts",
   "scripts": {
     "test": "npx ts-node example/index.ts"
   },
