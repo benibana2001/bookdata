@@ -6,8 +6,12 @@
   "scripts": {
     "test": "npx ts-node example/index.ts"
   },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/benibana2001/bookdata.git"
+  },
   "author": "benibana2002",
-  "license": "ISC",
+  "license": "MIT",
   "devDependencies": {
     "@types/node": "^20.2.3",
     "typescript": "^5.0.4"
