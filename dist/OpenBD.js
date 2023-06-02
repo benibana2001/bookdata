@@ -23,7 +23,7 @@ var OpenBD = class {
     }
     const title = data.onix.DescriptiveDetail.TitleDetail.TitleElement.TitleText.content;
     const coverurl = data.summary.cover;
-    return { title, coverurl, errorMessage: false };
+    return { title, coverurl, errorMessage: false, data };
   }
 };
 var openbd = new OpenBD();

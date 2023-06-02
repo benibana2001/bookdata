@@ -34,7 +34,7 @@ export class OpenBD {
       data.onix.DescriptiveDetail.TitleDetail.TitleElement.TitleText.content;
     const coverurl: string = data.summary.cover;
 
-    return { title: title, coverurl: coverurl, errorMessage: false };
+    return { title: title, coverurl: coverurl, errorMessage: false, data };
   }
 }
 

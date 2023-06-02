@@ -12,10 +12,12 @@ export declare class OpenBD {
         title: string;
         coverurl: string;
         errorMessage: string;
+        data?: undefined;
     } | {
         title: string;
         coverurl: string;
         errorMessage: boolean;
+        data: any;
     }>;
 }
 export declare const openbd: OpenBD;
