@@ -3,18 +3,18 @@ export interface LibRequest {
   isbn: string
   systemid: string
 }
-/**
- * For Calil API. Using for response library data.
- */
+
 export interface LibResponse {
   libkey: LibData[]
   reserveurl: string
 }
+
 export interface LibData {
-  id: number
-  name: string
-  status: string
+  libraryID: number
+  libraryName: string
+  bookStatus: string
 }
+
 enum ServerStatus {
   SUCCESS = 0,
   POLLING = 1,
@@ -112,9 +112,6 @@ export class Calil {
    * If using fetch API, using third party library for JSONP is required
    * because not supported in standard fetch API.
    *
-   * I dont' know why, but when I access Error was happend.
-   * I think it occured because server judged my request as wrong one when I request many times by same isbn probably.
-   *
    */
   public async search(req: LibRequest = this._request): Promise<LibResponse> {
     // Create url
@@ -130,7 +127,7 @@ export class Calil {
       '&systemid=' +
       this._request.systemid +
       '&format=json'
-    console.log(url)
+
     // Request
     const json: any = await this.callApi(url)
     // Check server status
@@ -139,14 +136,10 @@ export class Calil {
      * We should judge server process would be done or not by checking this status.
      * If not finished, we should proceed polling process.
      */
-    console.log(`json: ${JSON.stringify(json)}`)
     await this.checkServerStatus(json)
     // Check value 'continue' and decide next process.
     // this.confirm()
-    // DONE
-    console.log('search() is finished.')
     // Parse Data
-    console.log(this._response)
     return this._response
   }
   /**
@@ -172,9 +165,9 @@ export class Calil {
       return
     } else {
       if (this.serverStatus === ServerStatus.NOT_EXIST) {
-        console.log('Error - book is not exist')
+        console.error('Error - book is not exist')
       } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
-        console.log(`Error - server.status: ${this.serverStatus}`)
+        console.error(`Error - server.status: ${this.serverStatus}`)
       }
       return
     }
@@ -183,7 +176,6 @@ export class Calil {
    * poll
    */
   public async poll(): Promise<any> {
-    console.log('Start polling.')
     const url: string =
       this.HOST +
       '?appkey=' +
@@ -193,8 +185,6 @@ export class Calil {
       '&format=json'
     // request polling
     const json: any = await this.callApi(url)
-    console.log(`Polling url: ${url}`)
-    console.log(`Fetch from polling: ${JSON.stringify(json)}`)
     // Check server status
     await this.checkServerStatus(json)
   }
@@ -214,7 +204,7 @@ export class Calil {
     const res: LibResponse = { libkey: [], reserveurl: reserveurl }
     let i = 1
     for (const key in libkey) {
-      const d: LibData = { id: i, name: key, status: libkey[key] }
+      const d: LibData = { libraryID: i, libraryName: key, bookStatus: libkey[key] }
       res.libkey.push(d)
       i++
     }
@@ -237,38 +227,6 @@ export class Calil {
       }) 
 
     return s
-  }
-
-  private async parseStream(url: string): Promise<JSON> {
-    try {
-      const response = await fetch(url);
-      const readableStream = response.body;
-      const reader = readableStream.getReader();
-      let chunks = [];
-      let done = false;
-  
-      while (!done) {
-        const { value, done: readerDone } = await reader.read();
-  
-        if (readerDone) {
-          done = true;
-        } else {
-          chunks.push(value);
-        }
-      }
-  
-      const streamData = Buffer.concat(chunks).toString();
-      console.log(`streamData: ${streamData}`)
-      console.log(`type: ${typeof streamData}`)
-      const jsonData = JSON.parse(streamData);
-  
-      return jsonData
-  
-      console.log(jsonData);
-    } catch (error) {
-      console.error('An error occurred:', error);
-      return null
-    }
   }
 
   /**

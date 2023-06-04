@@ -13,10 +13,6 @@
 export { NDL }
 
 class NDL {
-  constructor() {
-    console.log('Hello NDL!')
-  }
-  //----------------------------------------
   /**
    * search
    */
@@ -27,7 +23,6 @@ class NDL {
       'https://iss.ndl.go.jp/api/sru?operation=searchRetrieve&maximumRecords=10&query=title%3d%22%e6%a1%9c%22%20AND%20from=%222018%22'
     //
     const xml: any = await this.callApi(url)
-    console.log(xml)
   }
   /**
    * callApi
