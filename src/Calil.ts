@@ -156,11 +156,7 @@ class Calil {
     return this._response;
   }
 
-  /**
-   * checkOptions
-   * Validate Options each value.
-   */
-  private checkRequestOptions(): void {
+  private validateRequestOptions(): void {
     if (!this._request.appkey) {
       console.error('Please set APP KEY');
     }
@@ -170,7 +166,6 @@ class Calil {
     if (!this._request.isbn) {
       console.error('Please set ISBN');
     }
-    // Set SystemID to property.
     if (!this._request.systemid) {
       console.error('Please set SYSTEM ID');
     }
@@ -184,7 +179,7 @@ class Calil {
   public async search(req: LibRequest = this._request): Promise<LibResponse> {
     this._request = req;
 
-    this.checkRequestOptions();
+    this.validateRequestOptions();
 
     /**
      * URLにはAPP_KEYと、検索対象の書籍のISBN、それからSYSTEM_IDを設定する
@@ -195,6 +190,7 @@ class Calil {
     // Request
     const json: object = await this.callApi(url);
 
+    // APIから帰ってきたサーバーステータスを確認し、ポーリングが必要化どうか判定
     await this.checkServerStatus(json);
 
     return this._response;
@@ -209,35 +205,28 @@ class Calil {
    * If not finished, we should proceed polling process.
    *
    */
-  private async checkServerStatus(json: object): Promise<void> {
+  private async checkServerStatus(json: any): Promise<void> {
     // Set server status
     this.serverStatus = this.retrieveStatusCodeFromJSON(json);
 
     // Set session
-    this.session = this.retrieveSessionFromJSON(json);
+    this.session = json.session;
 
     if (this.serverStatus === ServerStatus.POLLING) {
       // Polling
       await this.sleep(this.request.pollingDuration);
       await this.poll();
-
     } else if (this.serverStatus === ServerStatus.SUCCESS) {
-      // TODO: サーバーステータス確認メソッドの中でJSONのパースを行わない
       this.response = this.retrieveLibraryResponseFromJSON(json);
-
     } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
       console.error('Error - book is not exist');
-
     } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
       console.error(`Error - server.status: ${this.serverStatus}`);
-
     } else {
       console.error(`Error - Unexpected Error was occured`);
     }
   }
-  /**
-   * poll
-   */
+
   private async poll(): Promise<void> {
     const url: string = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
     // request polling
@@ -272,21 +261,30 @@ class Calil {
     return res;
   }
 
+  /**
+   *
+   * @param url Calil蔵書検索APIのURL
+   * @returns APIのレスポンス(JSONP)をパースして返却する
+   *
+   * APIからの返却値はJSONP形式であるため、JSONデータに変換して返している。
+   * Since the value returned from the API is in JSONP format, it is converted to JSON data and returned.
+   *
+   */
   private async callApi(url: string): Promise<LibResponse> {
-    let s: LibResponse;
+    let parsedObject: LibResponse;
 
     await fetch(url)
       .then((res) => res.text())
       .then((resText) => {
         const match = resText.match(/callback\((.*)\);/);
         if (!match) throw new Error('invalid JSONP response');
-        s = JSON.parse(match[1]);
+        parsedObject = JSON.parse(match[1]);
       })
       .catch((error) => {
         console.error(error);
       });
 
-    return s;
+    return parsedObject;
   }
 
   /**
@@ -296,42 +294,41 @@ class Calil {
    * 1: polling
    *
    * -1: server error
-   * -2: boo isn't exist
+   * -2: book isn't exist
    */
   private retrieveStatusCodeFromJSON(data: any): ServerStatus {
-    const c = data.continue;
     const status =
       data.books[this._request.isbn][this._request.systemid].status;
-    if (c === 1) {
-      // return 1
+
+    /**
+     * - continue
+     *    - 0（偽）または1（真）が返ります
+     *    - 1の場合は、まだすべての取得が完了していないことを示します。
+     *
+     * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
+     */
+    // continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストするよう、APIで指定されています。
+    if (data.continue === 1) {
       return ServerStatus.POLLING;
-    } else if (c === 0) {
+    } else if (data.continue === 0) {
+      // 蔵書の有無を判定
       if (status === 'OK' || status === 'Cache') {
         const libkey: any =
           data.books[this._request.isbn][this._request.systemid].libkey;
+
         if (!libkey || !Object.keys(libkey).length) {
-          // return -2
           return ServerStatus.NOT_EXIST;
         } else {
-          // return 0
           return ServerStatus.SUCCESS;
         }
       } else {
-        // return -1
         return ServerStatus.SERVER_ERROR;
       }
+    }else {
+      console.error(`Error: Failed to retrieve Status Code from JSON`)
     }
   }
-  /**
-   * getSession
-   */
-  private retrieveSessionFromJSON(data: any): string {
-    return data.session;
-  }
 
-  /**
-   * sleep
-   */
   private sleep(ms: number): Promise<any> {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
