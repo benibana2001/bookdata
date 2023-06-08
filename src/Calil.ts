@@ -1,12 +1,12 @@
 /**
  *
  *  About Calil API
- * 
+ *
  * カーリル図書館APIでは、全国のOPAC対応図書館のほぼすべてを網羅するリアルタイム蔵書検索機能を提供します。 また、全国の図書館の名称、住所、経緯度情報などをまとめた図書館データベースへのアクセスを提供します。
  * The Carlyle Library API provides a real-time collection search function that covers almost all OPAC-compatible libraries in Japan. It also provides access to a library database that compiles the names, addresses, and latitude/longitude information of libraries nationwide.
- * 
+ *
  * https://calil.jp/doc/api_ref.html
- * 
+ *
  */
 
 /**
@@ -15,7 +15,7 @@
  *
  * https://api.calil.jp/check?appkey={}&isbn=4334926940&systemid=Tokyo_Setagaya&format=json
  * https://api.calil.jp/check?appkey={}&isbn=4834000826&systemid=Aomori_Pref&format=json
- * 
+ *
  */
 export interface LibRequest {
   /**
@@ -51,13 +51,13 @@ export interface LibRequest {
 }
 
 /**
- * 
+ *
  * Response from Calil API
- * 
+ *
  */
 export interface LibResponse {
   /**
-   * 
+   *
    */
   libkey: LibData[];
 
@@ -69,7 +69,7 @@ export interface LibResponse {
 }
 
 /**
- * 図書館情報 
+ * 図書館情報
  * Library Information
  */
 export interface LibData {
@@ -98,25 +98,24 @@ enum ServerStatus {
   SUCCESS = 0,
   POLLING = 1,
   SERVER_ERROR = -1,
-  NOT_EXIST = -2,
+  NOT_EXIST = -2
 }
 
 const DEFAULT_LIB_REQUEST: LibRequest = {
-  appkey: "",
-  isbn: "",
-  systemid: "",
-  pollingDuration: 2000,
+  appkey: '',
+  isbn: '',
+  systemid: '',
+  pollingDuration: 2000
 };
 
 /**
  *
  * カーリルAPIに繋いで検索を行うクラス
  * Class that connects to the Carlyle API to perform searches
- * 
+ *
  */
 class Calil {
-
-  private readonly HOST: string = "https://api.calil.jp/check";
+  private readonly HOST: string = 'https://api.calil.jp/check';
   private _request: LibRequest = DEFAULT_LIB_REQUEST;
   private _serverStatus = 0;
 
@@ -141,7 +140,7 @@ class Calil {
    * If the search in Calil takes a long time, a session is returned from Calil as a string.
    * This session is used for the second call (polling).
    */
-  private _session = "";
+  private _session = '';
   set session(session: string) {
     this._session = session;
   }
@@ -163,17 +162,17 @@ class Calil {
    */
   private checkRequestOptions(): void {
     if (!this._request.appkey) {
-      console.error("Please set APP KEY");
+      console.error('Please set APP KEY');
     }
-    if (typeof this.request.isbn !== "string") {
-      console.error("Please set ISBN as string.");
+    if (typeof this.request.isbn !== 'string') {
+      console.error('Please set ISBN as string.');
     }
     if (!this._request.isbn) {
-      console.error("Please set ISBN");
+      console.error('Please set ISBN');
     }
     // Set SystemID to property.
     if (!this._request.systemid) {
-      console.error("Please set SYSTEM ID");
+      console.error('Please set SYSTEM ID');
     }
   }
 
@@ -196,22 +195,21 @@ class Calil {
     // Request
     const json: object = await this.callApi(url);
 
-    
     await this.checkServerStatus(json);
 
     return this._response;
   }
-  
+
   /**
-  *
-  * Check server status
-  *
-  * Calil server return status code as a number.
-  * We should judge server process would be done or not by checking this status code.
-  * If not finished, we should proceed polling process.
-  *
-  */
-  private async checkServerStatus(json: object): Promise<any> {
+   *
+   * Check server status
+   *
+   * Calil server return status code as a number.
+   * We should judge server process would be done or not by checking this status code.
+   * If not finished, we should proceed polling process.
+   *
+   */
+  private async checkServerStatus(json: object): Promise<void> {
     // Set server status
     this.serverStatus = this.retrieveStatusCodeFromJSON(json);
 
@@ -222,24 +220,25 @@ class Calil {
       // Polling
       await this.sleep(this.request.pollingDuration);
       await this.poll();
+
     } else if (this.serverStatus === ServerStatus.SUCCESS) {
       // TODO: サーバーステータス確認メソッドの中でJSONのパースを行わない
       this.response = this.retrieveLibraryResponseFromJSON(json);
-      return;
-    } else {
-      if (this.serverStatus === ServerStatus.NOT_EXIST) {
-        console.error("Error - book is not exist");
-      } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
-        console.error(`Error - server.status: ${this.serverStatus}`);
-      }
 
-      return;
+    } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
+      console.error('Error - book is not exist');
+
+    } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
+      console.error(`Error - server.status: ${this.serverStatus}`);
+
+    } else {
+      console.error(`Error - Unexpected Error was occured`);
     }
   }
   /**
    * poll
    */
-  public async poll(): Promise<any> {
+  private async poll(): Promise<void> {
     const url: string = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
     // request polling
     const json: object = await this.callApi(url);
@@ -254,7 +253,7 @@ class Calil {
    * and raw JSON data is difficult to display. So that this function parse JSON data to array.
    *
    */
-  public retrieveLibraryResponseFromJSON(json: any): LibResponse {
+  private retrieveLibraryResponseFromJSON(json: any): LibResponse {
     const libkey: any =
       json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl: string =
@@ -265,7 +264,7 @@ class Calil {
       const d: LibData = {
         libraryID: i,
         libraryName: key,
-        borrowingStatus: libkey[key],
+        borrowingStatus: libkey[key]
       };
       res.libkey.push(d);
       i++;
@@ -273,14 +272,14 @@ class Calil {
     return res;
   }
 
-  public async callApi(url: string): Promise<LibResponse> {
+  private async callApi(url: string): Promise<LibResponse> {
     let s: LibResponse;
 
     await fetch(url)
       .then((res) => res.text())
       .then((resText) => {
         const match = resText.match(/callback\((.*)\);/);
-        if (!match) throw new Error("invalid JSONP response");
+        if (!match) throw new Error('invalid JSONP response');
         s = JSON.parse(match[1]);
       })
       .catch((error) => {
@@ -295,7 +294,7 @@ class Calil {
    *
    * 0: success
    * 1: polling
-   *    
+   *
    * -1: server error
    * -2: boo isn't exist
    */
@@ -307,7 +306,7 @@ class Calil {
       // return 1
       return ServerStatus.POLLING;
     } else if (c === 0) {
-      if (status === "OK" || status === "Cache") {
+      if (status === 'OK' || status === 'Cache') {
         const libkey: any =
           data.books[this._request.isbn][this._request.systemid].libkey;
         if (!libkey || !Object.keys(libkey).length) {

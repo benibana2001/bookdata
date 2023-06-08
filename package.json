@@ -24,6 +24,7 @@
   },
   "dependencies": {
     "@types/fetch-jsonp": "^1.1.0",
+    "prettier": "^2.8.8",
     "ts-node": "^10.9.1"
   },
   "type": "module"
