@@ -307,7 +307,6 @@ class Calil {
      *
      * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
      */
-    // continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストするよう、APIで指定されています。
     if (data.continue === 1) {
       return ServerStatus.POLLING;
     } else if (data.continue === 0) {
