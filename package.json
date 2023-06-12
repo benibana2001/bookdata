@@ -1,12 +1,12 @@
 {
   "name": "benibana_bookdata",
-  "version": "0.1.0",
+  "version": "0.1.2",
   "description": "",
   "main": "dist/OpenBD.js",
   "scripts": {
     "test": "npx ts-node example/index.ts",
-    "build": "npx esbuild src/OpenBD.ts --bundle --format=esm --outdir=dist && npm run build:types",
-    "build:types": "npx tsc src/OpenBD.ts src/Calil.ts -declaration --emitDeclarationOnly --declarationDir src"
+    "build": "npx esbuild src/main.ts --bundle --format=esm --outdir=dist && npm run build:types",
+    "build:types": "npx tsc src/main.ts -declaration --emitDeclarationOnly --declarationDir dist"
   },
   "repository": {
     "type": "git",

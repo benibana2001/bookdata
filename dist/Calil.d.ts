@@ -51,6 +51,19 @@ export interface LibRequest {
  *
  */
 export interface LibResponse {
+    session?: string;
+    /**
+     * - continue
+     *    - 0（偽）または1（真）が返ります
+     *    - 1の場合は、まだすべての取得が完了していないことを示します。
+     *
+     * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
+     */
+    continue: number;
+    /**
+     *
+     */
+    books: {};
     /**
      *
      */
@@ -88,7 +101,7 @@ export interface LibData {
  * Class that connects to the Carlyle API to perform searches
  *
  */
-declare class Calil {
+export declare class Calil {
     private readonly HOST;
     private _request;
     private _serverStatus;
@@ -114,7 +127,7 @@ declare class Calil {
      *
      * Call api using fetch with JSONP.
      */
-    search(req?: LibRequest): Promise<LibResponse>;
+    search(req?: LibRequest): Promise<LibResponse | null>;
     /**
      *
      * Check server status
@@ -147,14 +160,9 @@ declare class Calil {
     /**
      * getServerStatus
      *
-     * 0: success
-     * 1: polling
-     *
-     * -1: server error
-     * -2: book isn't exist
+     * サーバーから返却されたcontinueの値を見て処理を分岐・実行します。
      */
     private retrieveStatusCodeFromJSON;
     private sleep;
 }
 export declare const calil: Calil;
-export {};
