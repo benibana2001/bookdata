@@ -6,7 +6,7 @@
   "scripts": {
     "test": "npx ts-node example/index.ts",
     "build": "npx esbuild src/OpenBD.ts --bundle --format=esm --outdir=dist && npm run build:types",
-    "build:types": "npx tsc src/OpenBD.ts -declaration --emitDeclarationOnly --declarationDir dist"
+    "build:types": "npx tsc src/OpenBD.ts src/Calil.ts -declaration --emitDeclarationOnly --declarationDir src"
   },
   "repository": {
     "type": "git",

@@ -56,6 +56,22 @@ export interface LibRequest {
  *
  */
 export interface LibResponse {
+  session?: string;
+
+  /**
+   * - continue
+   *    - 0（偽）または1（真）が返ります
+   *    - 1の場合は、まだすべての取得が完了していないことを示します。
+   *
+   * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
+   */
+  continue: number;
+
+  /**
+   *
+   */
+  books: {};
+
   /**
    *
    */
@@ -108,13 +124,20 @@ const DEFAULT_LIB_REQUEST: LibRequest = {
   pollingDuration: 2000
 };
 
+const DEFAULT_LIB_RESPONSE: LibResponse = {
+  libkey: [],
+  reserveurl: '',
+  continue: 0,
+  books: {}
+};
+
 /**
  *
  * カーリルAPIに繋いで検索を行うクラス
  * Class that connects to the Carlyle API to perform searches
  *
  */
-class Calil {
+export class Calil {
   private readonly HOST: string = 'https://api.calil.jp/check';
   private _request: LibRequest = DEFAULT_LIB_REQUEST;
   private _serverStatus = 0;
@@ -148,7 +171,7 @@ class Calil {
     return this._session;
   }
 
-  private _response: LibResponse | null = null;
+  private _response: LibResponse;
   set response(data: LibResponse) {
     this._response = data;
   }
@@ -176,7 +199,9 @@ class Calil {
    *
    * Call api using fetch with JSONP.
    */
-  public async search(req: LibRequest = this._request): Promise<LibResponse> {
+  public async search(
+    req: LibRequest = this._request
+  ): Promise<LibResponse | null> {
     this._request = req;
 
     this.validateRequestOptions();
@@ -188,7 +213,7 @@ class Calil {
     const url = `${this.HOST}?appkey=${this._request.appkey}&isbn=${this._request.isbn}&systemid=${this._request.systemid}&format=json`;
 
     // Request
-    const json: object = await this.callApi(url);
+    const json: LibResponse = await this.callApi(url);
 
     // APIから帰ってきたサーバーステータスを確認し、ポーリングが必要化どうか判定
     await this.checkServerStatus(json);
@@ -205,12 +230,12 @@ class Calil {
    * If not finished, we should proceed polling process.
    *
    */
-  private async checkServerStatus(json: any): Promise<void> {
+  private async checkServerStatus(json: LibResponse): Promise<void> {
     // Set server status
     this.serverStatus = this.retrieveStatusCodeFromJSON(json);
 
     // Set session
-    this.session = json.session;
+    if (json.session) this.session = json.session;
 
     if (this.serverStatus === ServerStatus.POLLING) {
       // Polling
@@ -230,7 +255,7 @@ class Calil {
   private async poll(): Promise<void> {
     const url: string = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
     // request polling
-    const json: object = await this.callApi(url);
+    const json: LibResponse = await this.callApi(url);
     // Check server status
     await this.checkServerStatus(json);
   }
@@ -247,7 +272,14 @@ class Calil {
       json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl: string =
       json.books[this._request.isbn][this._request.systemid].reserveurl;
-    const res: LibResponse = { libkey: [], reserveurl: reserveurl };
+    const books: {} =
+      json.books[this._request.isbn][this._request.systemid].books;
+    const res: LibResponse = {
+      libkey: [],
+      reserveurl,
+      continue: 0,
+      books
+    };
     let i = 1;
     for (const key in libkey) {
       const d: LibData = {
@@ -273,40 +305,31 @@ class Calil {
   private async callApi(url: string): Promise<LibResponse> {
     let parsedObject: LibResponse;
 
-    await fetch(url)
+    return await fetch(url)
       .then((res) => res.text())
       .then((resText) => {
         const match = resText.match(/callback\((.*)\);/);
         if (!match) throw new Error('invalid JSONP response');
         parsedObject = JSON.parse(match[1]);
+        return parsedObject;
       })
       .catch((error) => {
         console.error(error);
+        return DEFAULT_LIB_RESPONSE
       });
 
-    return parsedObject;
   }
+
 
   /**
    * getServerStatus
    *
-   * 0: success
-   * 1: polling
-   *
-   * -1: server error
-   * -2: book isn't exist
+   * サーバーから返却されたcontinueの値を見て処理を分岐・実行します。
    */
-  private retrieveStatusCodeFromJSON(data: any): ServerStatus {
+  private retrieveStatusCodeFromJSON(data: LibResponse): ServerStatus {
     const status =
       data.books[this._request.isbn][this._request.systemid].status;
 
-    /**
-     * - continue
-     *    - 0（偽）または1（真）が返ります
-     *    - 1の場合は、まだすべての取得が完了していないことを示します。
-     *
-     * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
-     */
     if (data.continue === 1) {
       return ServerStatus.POLLING;
     } else if (data.continue === 0) {
@@ -323,9 +346,10 @@ class Calil {
       } else {
         return ServerStatus.SERVER_ERROR;
       }
-    }else {
-      console.error(`Error: Failed to retrieve Status Code from JSON`)
+    } else {
+      console.error(`Error: Failed to retrieve Status Code from JSON`);
     }
+    return ServerStatus.SERVER_ERROR;
   }
 
   private sleep(ms: number): Promise<any> {
