@@ -1,7 +1,5 @@
 import { OpenBD, openbd } from './OpenBD';
-import { Calil, LibRequest, calil } from './Calil';
-
-const isbn = '9784334779436';
+import { Calil, CalilRequest, calil } from './Calil';
 
 export class BeniBook {
   private _openbd: OpenBD;
@@ -20,7 +18,7 @@ export class BeniBook {
     return (await this._openbd.search(isbn)).title;
   }
 
-  public async searchLibraryStock(request: LibRequest) {
+  public async searchLibraryStock(request: CalilRequest) {
     return await this._calil.search(request);
   }
 }

@@ -1,6 +1,6 @@
-import { beniBook } from '../src/main.js';
+import { beniBook } from '../src/main';
 
-const isbn = "9784837987499"
+const isbn = '9784837987499';
 
 /**
  * 書影の取得テスト

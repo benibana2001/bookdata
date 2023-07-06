@@ -16,7 +16,7 @@
  * https://api.calil.jp/check?appkey={}&isbn=4834000826&systemid=Aomori_Pref&format=json
  *
  */
-export interface LibRequest {
+export interface CalilRequest {
     /**
      * apkeyはユーザーが各自でCalilに登録して受領する必要あり
      * Users must register and receive apkey from Calil on their own.。
@@ -45,13 +45,8 @@ export interface LibRequest {
      */
     pollingDuration: number;
 }
-/**
- *
- * Response from Calil API
- *
- */
-export interface LibResponse {
-    session?: string;
+export interface CalilResponse {
+    session: string;
     /**
      * - continue
      *    - 0（偽）または1（真）が返ります
@@ -60,18 +55,33 @@ export interface LibResponse {
      * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
      */
     continue: number;
+    books: CalilResponseBook[];
+}
+type CalilResponseBook = {
+    string: CalilResponsePrefecture;
+};
+type CalilResponsePrefecture = {
+    string: {
+        status: string;
+        reserveurl: string;
+    };
+};
+/**
+ *
+ * Response from Calil API
+ *
+ */
+export interface ParsedResponse {
+    session?: string;
+    continue: number;
     /**
      *
      */
-    books: {};
+    books: object;
     /**
      *
      */
     libkey: LibData[];
-    /**
-     * The URL to reserve book provided by library
-     * 図書館が提供している予約WebページへのリンクURL
-     */
     reserveurl: string;
 }
 /**
@@ -105,8 +115,8 @@ export declare class Calil {
     private readonly HOST;
     private _request;
     private _serverStatus;
-    get request(): LibRequest;
-    set request(request: LibRequest);
+    get request(): CalilRequest;
+    set request(request: CalilRequest);
     set serverStatus(status: number);
     get serverStatus(): number;
     /**
@@ -119,15 +129,15 @@ export declare class Calil {
     set session(session: string);
     get session(): string;
     private _response;
-    set response(data: LibResponse);
-    get response(): LibResponse;
+    set response(data: ParsedResponse);
+    get response(): ParsedResponse;
     private validateRequestOptions;
     /**
      * Search book states
      *
      * Call api using fetch with JSONP.
      */
-    search(req?: LibRequest): Promise<LibResponse | null>;
+    search(req?: CalilRequest): Promise<ParsedResponse | null>;
     /**
      *
      * Check server status
@@ -166,3 +176,4 @@ export declare class Calil {
     private sleep;
 }
 export declare const calil: Calil;
+export {};

@@ -17,7 +17,7 @@
  * https://api.calil.jp/check?appkey={}&isbn=4834000826&systemid=Aomori_Pref&format=json
  *
  */
-export interface LibRequest {
+export interface CalilRequest {
   /**
    * apkeyはユーザーが各自でCalilに登録して受領する必要あり
    * Users must register and receive apkey from Calil on their own.。
@@ -50,14 +50,8 @@ export interface LibRequest {
   pollingDuration: number;
 }
 
-/**
- *
- * Response from Calil API
- *
- */
-export interface LibResponse {
-  session?: string;
-
+export interface CalilResponse {
+  session: string;
   /**
    * - continue
    *    - 0（偽）または1（真）が返ります
@@ -67,20 +61,40 @@ export interface LibResponse {
    */
   continue: number;
 
+  books: CalilResponseBook[];
+}
+
+type CalilResponseBook = {
+  string: CalilResponsePrefecture;
+};
+
+type CalilResponsePrefecture = {
+  string: {
+    status: string;
+    reserveurl: string;
+  };
+};
+
+/**
+ *
+ * Response from Calil API
+ *
+ */
+export interface ParsedResponse {
+  session?: string;
+
+  continue: number;
+
   /**
    *
    */
-  books: {};
+  books: object;
 
   /**
    *
    */
   libkey: LibData[];
 
-  /**
-   * The URL to reserve book provided by library
-   * 図書館が提供している予約WebページへのリンクURL
-   */
   reserveurl: string;
 }
 
@@ -110,25 +124,26 @@ export interface LibData {
  * Calilサーバーにおける本の検索状態
  * State of book search on Calil server
  */
-enum ServerStatus {
-  SUCCESS = 0,
-  POLLING = 1,
-  SERVER_ERROR = -1,
-  NOT_EXIST = -2
-}
+type CALIL_SERVER_BOOK_STATUS = 0 | 1 | -1 | -2;
 
-const DEFAULT_LIB_REQUEST: LibRequest = {
+const ServerStatus: { [key: string]: CALIL_SERVER_BOOK_STATUS } = {
+  SUCCESS: 0,
+  POLLING: 1,
+  SERVER_ERROR: -1,
+  NOT_EXIST: -2
+};
+
+const DEFAULT_CALIL_REQUEST: CalilRequest = {
   appkey: '',
   isbn: '',
   systemid: '',
   pollingDuration: 2000
 };
 
-const DEFAULT_LIB_RESPONSE: LibResponse = {
-  libkey: [],
-  reserveurl: '',
-  continue: 0,
-  books: {}
+const DEFAULT_CALIL_RESPONSE: CalilResponse = {
+  session: '',
+  continue: 0 | 1,
+  books: []
 };
 
 /**
@@ -139,14 +154,14 @@ const DEFAULT_LIB_RESPONSE: LibResponse = {
  */
 export class Calil {
   private readonly HOST: string = 'https://api.calil.jp/check';
-  private _request: LibRequest = DEFAULT_LIB_REQUEST;
+  private _request: CalilRequest = DEFAULT_CALIL_REQUEST;
   private _serverStatus = 0;
 
   get request() {
     return this._request;
   }
 
-  set request(request: LibRequest) {
+  set request(request: CalilRequest) {
     this._request = request;
   }
 
@@ -171,8 +186,8 @@ export class Calil {
     return this._session;
   }
 
-  private _response: LibResponse;
-  set response(data: LibResponse) {
+  private _response: ParsedResponse;
+  set response(data: ParsedResponse) {
     this._response = data;
   }
   get response() {
@@ -200,8 +215,8 @@ export class Calil {
    * Call api using fetch with JSONP.
    */
   public async search(
-    req: LibRequest = this._request
-  ): Promise<LibResponse | null> {
+    req: CalilRequest = this._request
+  ): Promise<ParsedResponse | null> {
     this._request = req;
 
     this.validateRequestOptions();
@@ -213,7 +228,7 @@ export class Calil {
     const url = `${this.HOST}?appkey=${this._request.appkey}&isbn=${this._request.isbn}&systemid=${this._request.systemid}&format=json`;
 
     // Request
-    const json: LibResponse = await this.callApi(url);
+    const json: CalilResponse = await this.callApi(url);
 
     // APIから帰ってきたサーバーステータスを確認し、ポーリングが必要化どうか判定
     await this.checkServerStatus(json);
@@ -230,7 +245,7 @@ export class Calil {
    * If not finished, we should proceed polling process.
    *
    */
-  private async checkServerStatus(json: LibResponse): Promise<void> {
+  private async checkServerStatus(json: CalilResponse): Promise<void> {
     // Set server status
     this.serverStatus = this.retrieveStatusCodeFromJSON(json);
 
@@ -242,6 +257,7 @@ export class Calil {
       await this.sleep(this.request.pollingDuration);
       await this.poll();
     } else if (this.serverStatus === ServerStatus.SUCCESS) {
+      console.log('json', json);
       this.response = this.retrieveLibraryResponseFromJSON(json);
     } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
       console.error('Error - book is not exist');
@@ -253,9 +269,9 @@ export class Calil {
   }
 
   private async poll(): Promise<void> {
-    const url: string = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
+    const url = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
     // request polling
-    const json: LibResponse = await this.callApi(url);
+    const json: CalilResponse = await this.callApi(url);
     // Check server status
     await this.checkServerStatus(json);
   }
@@ -267,14 +283,14 @@ export class Calil {
    * and raw JSON data is difficult to display. So that this function parse JSON data to array.
    *
    */
-  private retrieveLibraryResponseFromJSON(json: any): LibResponse {
+  private retrieveLibraryResponseFromJSON(json: CalilResponse): ParsedResponse {
     const libkey: any =
       json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl: string =
       json.books[this._request.isbn][this._request.systemid].reserveurl;
-    const books: {} =
+    const books: object =
       json.books[this._request.isbn][this._request.systemid].books;
-    const res: LibResponse = {
+    const res: ParsedResponse = {
       libkey: [],
       reserveurl,
       continue: 0,
@@ -302,8 +318,8 @@ export class Calil {
    * Since the value returned from the API is in JSONP format, it is converted to JSON data and returned.
    *
    */
-  private async callApi(url: string): Promise<LibResponse> {
-    let parsedObject: LibResponse;
+  private async callApi(url: string): Promise<CalilResponse> {
+    let parsedObject: CalilResponse;
 
     return await fetch(url)
       .then((res) => res.text())
@@ -315,18 +331,16 @@ export class Calil {
       })
       .catch((error) => {
         console.error(error);
-        return DEFAULT_LIB_RESPONSE
+        return DEFAULT_CALIL_RESPONSE;
       });
-
   }
-
 
   /**
    * getServerStatus
    *
    * サーバーから返却されたcontinueの値を見て処理を分岐・実行します。
    */
-  private retrieveStatusCodeFromJSON(data: LibResponse): ServerStatus {
+  private retrieveStatusCodeFromJSON(data: CalilResponse): CALIL_SERVER_BOOK_STATUS {
     const status =
       data.books[this._request.isbn][this._request.systemid].status;
 

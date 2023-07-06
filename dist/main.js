@@ -29,21 +29,26 @@ var OpenBD = class {
 var openbd = new OpenBD();
 
 // src/Calil.ts
-var DEFAULT_LIB_REQUEST = {
+var ServerStatus = {
+  SUCCESS: 0,
+  POLLING: 1,
+  SERVER_ERROR: -1,
+  NOT_EXIST: -2
+};
+var DEFAULT_CALIL_REQUEST = {
   appkey: "",
   isbn: "",
   systemid: "",
   pollingDuration: 2e3
 };
-var DEFAULT_LIB_RESPONSE = {
-  libkey: [],
-  reserveurl: "",
-  continue: 0,
-  books: {}
+var DEFAULT_CALIL_RESPONSE = {
+  session: "",
+  continue: 0 | 1,
+  books: []
 };
 var Calil = class {
   HOST = "https://api.calil.jp/check";
-  _request = DEFAULT_LIB_REQUEST;
+  _request = DEFAULT_CALIL_REQUEST;
   _serverStatus = 0;
   get request() {
     return this._request;
@@ -117,14 +122,15 @@ var Calil = class {
     this.serverStatus = this.retrieveStatusCodeFromJSON(json);
     if (json.session)
       this.session = json.session;
-    if (this.serverStatus === 1 /* POLLING */) {
+    if (this.serverStatus === ServerStatus.POLLING) {
       await this.sleep(this.request.pollingDuration);
       await this.poll();
-    } else if (this.serverStatus === 0 /* SUCCESS */) {
+    } else if (this.serverStatus === ServerStatus.SUCCESS) {
+      console.log("json", json);
       this.response = this.retrieveLibraryResponseFromJSON(json);
-    } else if (this.serverStatus === -2 /* NOT_EXIST */) {
+    } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
       console.error("Error - book is not exist");
-    } else if (this.serverStatus === -1 /* SERVER_ERROR */) {
+    } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
       console.error(`Error - server.status: ${this.serverStatus}`);
     } else {
       console.error(`Error - Unexpected Error was occured`);
@@ -183,7 +189,7 @@ var Calil = class {
       return parsedObject;
     }).catch((error) => {
       console.error(error);
-      return DEFAULT_LIB_RESPONSE;
+      return DEFAULT_CALIL_RESPONSE;
     });
   }
   /**
@@ -194,22 +200,22 @@ var Calil = class {
   retrieveStatusCodeFromJSON(data) {
     const status = data.books[this._request.isbn][this._request.systemid].status;
     if (data.continue === 1) {
-      return 1 /* POLLING */;
+      return ServerStatus.POLLING;
     } else if (data.continue === 0) {
       if (status === "OK" || status === "Cache") {
         const libkey = data.books[this._request.isbn][this._request.systemid].libkey;
         if (!libkey || !Object.keys(libkey).length) {
-          return -2 /* NOT_EXIST */;
+          return ServerStatus.NOT_EXIST;
         } else {
-          return 0 /* SUCCESS */;
+          return ServerStatus.SUCCESS;
         }
       } else {
-        return -1 /* SERVER_ERROR */;
+        return ServerStatus.SERVER_ERROR;
       }
     } else {
       console.error(`Error: Failed to retrieve Status Code from JSON`);
     }
-    return -1 /* SERVER_ERROR */;
+    return ServerStatus.SERVER_ERROR;
   }
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
