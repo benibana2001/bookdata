@@ -36,7 +36,7 @@ export interface CalilRequest {
      * The string to be specified must be the one determined by Calil
      * One string is assigned to each municipality.
      */
-    systemid: string;
+    systemid: Prefecture;
     /**
      * ポーリングの間隔(ms)
      * Calil-APIから返却がない場合は時間をおいて再接続(ポーリング)するよう決められている
@@ -54,18 +54,24 @@ export interface CalilResponse {
      *
      * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
      */
-    continue: number;
-    books: CalilResponseBook[];
+    continue: CALIL_SERVER_CONTINUE_STATUS;
+    books: CalilResponseBook;
 }
 type CalilResponseBook = {
-    string: CalilResponsePrefecture;
+    [key: string]: CalilResponsePrefecture;
 };
 type CalilResponsePrefecture = {
-    string: {
-        status: string;
+    [key: string]: {
+        status: CalilResponseSearchStatus;
         reserveurl: string;
+        libkey: CalilResponseLibkey;
     };
 };
+type CalilResponseSearchStatus = 'OK' | 'Cache' | 'Running' | 'Error';
+type CalilResponseLibkey = {
+    [key: string]: BorrowingStatus;
+};
+type BorrowingStatus = '貸出可' | '蔵書あり' | '館内のみ' | '貸出中' | '予約中' | '準備中' | '休館中' | '蔵書なし';
 /**
  *
  * Response from Calil API
@@ -74,10 +80,6 @@ type CalilResponsePrefecture = {
 export interface ParsedResponse {
     session?: string;
     continue: number;
-    /**
-     *
-     */
-    books: object;
     /**
      *
      */
@@ -103,8 +105,9 @@ export interface LibData {
      * 検索した本の貸出状況
      * Borrowing status of searched books
      */
-    borrowingStatus: string;
+    borrowingStatus: BorrowingStatus;
 }
+type CALIL_SERVER_CONTINUE_STATUS = 0 | 1;
 /**
  *
  * カーリルAPIに繋いで検索を行うクラス
@@ -175,5 +178,9 @@ export declare class Calil {
     private retrieveStatusCodeFromJSON;
     private sleep;
 }
+type PrefecturePrefix = 'Tokyo_';
+type PrefectureName = 'Adachi' | 'Akiruno' | 'Akishima' | 'Arakawa' | 'Bunkyo' | 'Chiyoda' | 'Chofu' | 'Chuo' | 'Edogawa' | 'Fuchu' | 'Fussa' | 'Hachijo' | 'Hachioji' | 'Hamura' | 'Higashikurume' | 'Higashimurayama' | 'Higashiyamato' | 'Hino' | 'Hinode' | 'Inagi' | 'Itabashi' | 'Katsushika' | 'Kita' | 'Kiyose' | 'Kodaira' | 'Koganei' | 'Kokubunji' | 'Komae' | 'Koto' | 'Kunitachi' | 'Machida' | 'Meguro' | 'Minato' | 'Mitaka' | 'Mizuho' | 'Musashimurayama' | 'Musashino' | 'Nakano' | 'NDL' | 'Nerima' | 'Niijima' | 'Nishitokyo' | 'Okutama' | 'Ome' | 'Ota' | 'Koganei' | 'Setagaya' | 'Shibuya' | 'Shinagawa' | 'Shinjuku' | 'Suginami' | 'Sumida' | 'Tachikawa' | 'Taito' | 'Tama' | 'Toshima';
+type Prefecture = `${PrefecturePrefix}${PrefectureName}`;
+export declare const PrefectureList: [Prefecture, string][];
 export declare const calil: Calil;
 export {};

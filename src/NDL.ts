@@ -29,7 +29,7 @@ class NDL {
    */
   private async callApi(url: string): Promise<any> {
     // Return type is XML.
-    const header: {} = {
+    const header: object = {
       method: 'GET',
       headers: {
         'Content-Type': 'application/xml',

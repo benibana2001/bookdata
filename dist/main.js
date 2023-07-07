@@ -38,13 +38,23 @@ var ServerStatus = {
 var DEFAULT_CALIL_REQUEST = {
   appkey: "",
   isbn: "",
-  systemid: "",
+  systemid: "Tokyo_Setagaya",
   pollingDuration: 2e3
 };
 var DEFAULT_CALIL_RESPONSE = {
   session: "",
-  continue: 0 | 1,
-  books: []
+  continue: 0,
+  books: {
+    "4334926940": {
+      Tokyo_Setagaya: {
+        status: "OK",
+        libkey: {
+          xxx: "\u8CB8\u51FA\u4E2D"
+        },
+        reserveurl: ""
+      }
+    }
+  }
 };
 var Calil = class {
   HOST = "https://api.calil.jp/check";
@@ -151,12 +161,10 @@ var Calil = class {
   retrieveLibraryResponseFromJSON(json) {
     const libkey = json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl = json.books[this._request.isbn][this._request.systemid].reserveurl;
-    const books = json.books[this._request.isbn][this._request.systemid].books;
     const res = {
       libkey: [],
       reserveurl,
-      continue: 0,
-      books
+      continue: 0
     };
     let i = 1;
     for (const key in libkey) {
@@ -198,11 +206,11 @@ var Calil = class {
    * サーバーから返却されたcontinueの値を見て処理を分岐・実行します。
    */
   retrieveStatusCodeFromJSON(data) {
-    const status = data.books[this._request.isbn][this._request.systemid].status;
+    const searchStatus = data.books[this._request.isbn][this._request.systemid].status;
     if (data.continue === 1) {
       return ServerStatus.POLLING;
     } else if (data.continue === 0) {
-      if (status === "OK" || status === "Cache") {
+      if (searchStatus === "OK" || searchStatus === "Cache") {
         const libkey = data.books[this._request.isbn][this._request.systemid].libkey;
         if (!libkey || !Object.keys(libkey).length) {
           return ServerStatus.NOT_EXIST;
@@ -231,9 +239,15 @@ var BeniBook = class {
     this._openbd = openbd;
     this._calil = calil;
   }
+  /**
+   * 本の書影を取得する
+   */
   async searchBookCoverURL(isbn) {
     return (await this._openbd.search(isbn)).coverurl;
   }
+  /**
+   * 本のタイトルを取得する
+   */
   async searchBookTitle(isbn) {
     return (await this._openbd.search(isbn)).title;
   }
