@@ -1,7 +1,7 @@
 import { CalilServerStatusError } from './Errors';
 
 /**
- *
+ ****************************
  *  About Calil API
  *
  * カーリル図書館APIでは、全国のOPAC対応図書館のほぼすべてを網羅するリアルタイム蔵書検索機能を提供します。 また、全国の図書館の名称、住所、経緯度情報などをまとめた図書館データベースへのアクセスを提供します。
@@ -13,7 +13,11 @@ import { CalilServerStatusError } from './Errors';
  *
  * https://api.calil.jp/check?appkey={}&isbn=4334926940&systemid=Tokyo_Setagaya&format=json
  * https://api.calil.jp/check?appkey={}&isbn=4834000826&systemid=Aomori_Pref&format=json
- *
+ ****************************
+ */
+
+/**
+ * 蔵書検索リクエスト
  */
 export interface CalilRequest {
   /**
@@ -48,6 +52,9 @@ export interface CalilRequest {
   pollingDuration: number;
 }
 
+/**
+ * 蔵書検索結果
+ */
 export interface CalilResponse {
   session: string;
   /**
@@ -57,16 +64,20 @@ export interface CalilResponse {
    *
    * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
    */
-  continue: CALIL_SERVER_CONTINUE_STATUS;
+  continue: CalilResponseContinueValue;
 
-  books: CalilResponseBook;
+  /**
+   * 蔵書検索結果
+   * リクエストしたISBNをキーとした検索結果
+   */
+  books: {
+    [key: string]: CalilResponsePrefecture;
+  };
 }
 
-type CalilResponseBook = {
-  // Key is ISBN you requested
-  [key: string]: CalilResponsePrefecture;
-};
-
+/**
+ * リクエストした年の名称をキーとした検索結果
+ */
 type CalilResponsePrefecture = {
   [key: string]: {
     status: CalilResponseSearchStatus;
@@ -75,11 +86,25 @@ type CalilResponsePrefecture = {
   };
 };
 
+/**
+ * Calilサーバーの検索状態. APIで定義された数値
+ */
+type CalilResponseContinueValue = 0 | 1;
+
+/**
+ * Calilサーバーの検索状態. これらはAPI側で定義された文字列
+ */
 type CalilResponseSearchStatus = 'OK' | 'Cache' | 'Running' | 'Error';
 
-type CalilResponseLibkey = { [key: string]: BorrowingStatus };
+/**
+ * 図書館名称をキーとした検索結果. API側で定義されている
+ */
+type CalilResponseLibkey = { [key: string]: CalilResponseBorrowingStatus };
 
-type BorrowingStatus =
+/**
+ * 本の貸出状態。 API側で定義された文字列
+ */
+type CalilResponseBorrowingStatus =
   | '貸出可'
   | '蔵書あり'
   | '館内のみ'
@@ -90,28 +115,27 @@ type BorrowingStatus =
   | '蔵書なし';
 
 /**
- *
- * Response from Calil API
- *
+ * 検索結果を使いやすいようにパース
+ * 最終的に返す値
  */
 export interface ParsedResponse {
-  session?: string;
+  // session?: string;
 
   continue: number;
 
   /**
-   *
+   * 蔵書の状態
    */
-  libkey: LibData[];
+  libraryStock: ParsedLibraryData[];
 
   reserveurl: string;
 }
 
 /**
- * 図書館情報
+ * 個々の図書館施設における蔵書の状態
  * Library Information
  */
-export interface LibData {
+export interface ParsedLibraryData {
   /**
    * 図書館のユニークID
    * Library Unique ID
@@ -126,34 +150,19 @@ export interface LibData {
    * 検索した本の貸出状況
    * Borrowing status of searched books
    */
-  borrowingStatus: BorrowingStatus;
+  borrowingStatus: CalilResponseBorrowingStatus;
 }
 
 /**
  * Calilサーバーにおける本の検索状態
  * State of book search on Calil server
  */
-// type CALIL_SERVER_BOOK_STATUS = 0 | 1 | -1 | -2;
-type CALIL_SERVER_BOOK_STATUS =
-  | 'SUCCESS'
-  | 'POLINLING'
-  | 'SERVER_ERROR'
-  | 'NOT_EXIST';
-
-type CALIL_SERVER_CONTINUE_STATUS = 0 | 1;
-
-// TODO: 文字列でユニオン型でOK
-// const ServerStatus: { [key: string]: CALIL_SERVER_BOOK_STATUS } = {
-//   SUCCESS: 0,
-//   POLLING: 1,
-//   SERVER_ERROR: -1,
-//   NOT_EXIST: -2
-// };
+type CALIL_SERVER_BOOK_STATUS = 'SUCCESS' | 'POLINLING' | 'SERVER_ERROR';
 
 const DEFAULT_CALIL_REQUEST: CalilRequest = {
   appkey: '',
   isbn: '',
-  systemid: 'Tokyo_Setagaya',
+  systemid: null,
   pollingDuration: 2000
 };
 
@@ -224,6 +233,8 @@ export class Calil {
    * Search book states
    *
    * Call api using fetch with JSONP.
+   * 
+   * 蔵書がない場合も空のオブジェクトを返す
    */
   public async search(
     req: CalilRequest = this._request
@@ -237,11 +248,10 @@ export class Calil {
      * Set the URL to APP_KEY, the ISBN of the book to be searched, and the SYSTEM_ID.
      */
     const url = `${this.HOST}?appkey=${this._request.appkey}&isbn=${this._request.isbn}&systemid=${this._request.systemid}&format=json`;
-    console.log(url)
     // Request
-    const json: CalilResponse = await this.callApi(url);
-    // APIから帰ってきたサーバーステータスを確認し、ポーリングが必要化どうか判定
-    await this.checkServerStatus(json);
+    const res: CalilResponse = await this.callApi(url);
+    // APIから帰ってきたサーバーステータスを確認し、必要であればポーリングを実行
+    await this.checkServerStatusAndPoll(res);
     return this._response;
   }
 
@@ -254,28 +264,26 @@ export class Calil {
    * If not finished, we should proceed polling process.
    *
    */
-  private async checkServerStatus(json: CalilResponse): Promise<void> {
+  private async checkServerStatusAndPoll(res: CalilResponse): Promise<void> {
     // Set server status
-    this.serverStatus = this.retrieveStatusCodeFromJSON(json);
+    this.serverStatus = this.retrieveStatusCodeFromJSON(res);
 
     // Set session
-    if (json.session) this.session = json.session;
+    if (res.session) this.session = res.session;
 
     if (this.serverStatus === 'POLINLING') {
       // Polling
       await this.sleep(this.request.pollingDuration);
       await this.poll();
     } else if (this.serverStatus === 'SUCCESS') {
-      this.response = this.retrieveLibraryResponseFromJSON(json);
-    } else if (this.serverStatus === 'NOT_EXIST') {
-      // TODO THIS IS NOT ERROR ⚠️
-      console.error('Error - book is not exist');
+      // 蔵書がない場合もこのブロックに入る
+      this.response = this.parseResponse(res);
     } else if (this.serverStatus === 'SERVER_ERROR') {
-      throw new CalilServerStatusError(500, {
+      const SERVER_STATUS_NUMBER = 500;
+      throw new CalilServerStatusError(SERVER_STATUS_NUMBER, {
         // TODO: to keep clean
         detailMessage: `Error was occured at Calil Server..\n This Error status code is generated at Calil Server.\n You shold referto https://calil.jp/doc/api_ref.html`
       });
-      console.error(`Error - server.status: ${this.serverStatus}`);
     } else {
       console.error(`Error - Unexpected Error was occured`);
     }
@@ -286,7 +294,7 @@ export class Calil {
     // request polling
     const json: CalilResponse = await this.callApi(url);
     // Check server status
-    await this.checkServerStatus(json);
+    await this.checkServerStatusAndPoll(json);
   }
 
   /**
@@ -296,33 +304,31 @@ export class Calil {
    * and raw JSON data is difficult to display. So that this function parse JSON data to array.
    *
    */
-  private retrieveLibraryResponseFromJSON(json: CalilResponse): ParsedResponse {
+  private parseResponse(json: CalilResponse): ParsedResponse {
     const libkey: CalilResponseLibkey =
       json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl: string =
       json.books[this._request.isbn][this._request.systemid].reserveurl;
     const res: ParsedResponse = {
-      libkey: [],
+      libraryStock: [], // 図書館ごとの情報を配列で保持する
       reserveurl,
       continue: 0
     };
-    let i = 1;
-    for (const key in libkey) {
-      const d: LibData = {
-        libraryID: i,
-        libraryName: key,
-        borrowingStatus: libkey[key]
+    let id = 1;
+    // オブジェクトを配列形式に変換する
+    for (const name in libkey) {
+      const d: ParsedLibraryData = {
+        libraryID: id,
+        libraryName: name,
+        borrowingStatus: libkey[name]
       };
-      res.libkey.push(d);
-      i++;
+      res.libraryStock.push(d);
+      id++;
     }
     return res;
   }
 
   /**
-   *
-   * @param url Calil蔵書検索APIのURL
-   * @returns APIのレスポンス(JSONP)をパースして返却する
    *
    * APIからの返却値はJSONP形式であるため、JSONデータに変換して返している。
    * Since the value returned from the API is in JSONP format, it is converted to JSON data and returned.
@@ -359,25 +365,18 @@ export class Calil {
       data.books[this._request.isbn][this._request.systemid].status;
 
     if (data.continue === 1) {
-      // TODO not use number. replace string. 'POLLING', 'NOT_EXIST', 'SUCCESS', 'SERVER_ERROR'
       return 'POLINLING';
     } else if (data.continue === 0) {
       // 蔵書の有無を判定
       if (searchStatus === 'OK' || searchStatus === 'Cache') {
-        const libkey: CalilResponseLibkey =
-          data.books[this._request.isbn][this._request.systemid].libkey;
-
-        if (!libkey || !Object.keys(libkey).length) {
-          // TODO エラーではないのでnull,あるいは空オブジェクトで返す
-          return 'NOT_EXIST';
-        } else {
-          return 'SUCCESS';
-        }
-      } else {
-        return 'SERVER_ERROR';
+        return 'SUCCESS';
+      } else if (searchStatus === 'Error') {
+        console.error(
+          `Error: Failed to retrieve Status Code from JSON\nsearchStatsl: ${searchStatus}`
+        );
       }
     } else {
-      console.error(`Error: Failed to retrieve Status Code from JSON`);
+      `Error: Failed to retrieve Status Code from JSON\nsearchStatsl: ${searchStatus}`;
     }
     return 'SERVER_ERROR';
   }

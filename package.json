@@ -4,6 +4,7 @@
   "description": "",
   "main": "dist/main.js",
   "scripts": {
+    "lint": "npx eslint src/Calil.ts",
     "test": "npx ts-node example/index.ts",
     "build": "npx esbuild src/main.ts --bundle --format=esm --outdir=dist && npm run build:types",
     "build:types": "npx tsc src/main.ts -declaration --emitDeclarationOnly --declarationDir dist",

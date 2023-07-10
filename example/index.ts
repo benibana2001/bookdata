@@ -1,8 +1,8 @@
 import { beniBook } from '../src/main';
 
-// const isbn = '9784837987499';
-// const isbn = '9784837987490'; // TODO: openBDの返り値がおかしい
-const isbn = '9784837987401'; // TODO: notExist test
+const isbn = '9784837987499';
+// const isbn = '9784837987490'; // TODO: openBDに情報がない場合の対応を行う
+// const isbn = '9784837987401'; // TODO: notExist test
 
 /**
  * 書影の取得テスト
@@ -29,7 +29,15 @@ try {
     pollingDuration
   });
 
-  console.log('res', res);
+  if (Object.keys(res.libraryStock).length < 1) {
+    console.log('蔵書なし');
+  } else {
+    res.libraryStock.forEach(({ libraryID, libraryName, borrowingStatus }) => {
+      console.log(
+        `- ${libraryID}.${libraryName}: 貸出状況：${borrowingStatus}`
+      );
+    });
+  }
 } catch (e) {
   console.log(e);
 }
