@@ -1,3 +1,5 @@
+import { CalilServerStatusError } from './Errors';
+
 /**
  *
  *  About Calil API
@@ -6,10 +8,6 @@
  * The Carlyle Library API provides a real-time collection search function that covers almost all OPAC-compatible libraries in Japan. It also provides access to a library database that compiles the names, addresses, and latitude/longitude information of libraries nationwide.
  *
  * https://calil.jp/doc/api_ref.html
- *
- */
-
-/**
  *
  * TEST URL - PLEASE SET YOUR APPKEY -
  *
@@ -69,24 +67,6 @@ type CalilResponseBook = {
   [key: string]: CalilResponsePrefecture;
 };
 
-// type CalilResponsePrefecture = {
-//   [key: Prefecture]: {
-//     status: CalilResponseSearchStatus;
-//     reserveurl: string;
-//     libkey: {
-//       [key: string]: BorrowingStatus;
-//     };
-//   };
-// };
-// type CalilResponsePrefecture = {
-//   [key: Prefecture]: {
-//     status: CalilResponseSearchStatus;
-//     reserveurl: string;
-//     libkey: {
-//       [key: string]: BorrowingStatus;
-//     };
-//   };
-// };
 type CalilResponsePrefecture = {
   [key: string]: {
     status: CalilResponseSearchStatus;
@@ -153,38 +133,28 @@ export interface LibData {
  * Calilサーバーにおける本の検索状態
  * State of book search on Calil server
  */
-type CALIL_SERVER_BOOK_STATUS = 0 | 1 | -1 | -2;
+// type CALIL_SERVER_BOOK_STATUS = 0 | 1 | -1 | -2;
+type CALIL_SERVER_BOOK_STATUS =
+  | 'SUCCESS'
+  | 'POLINLING'
+  | 'SERVER_ERROR'
+  | 'NOT_EXIST';
 
 type CALIL_SERVER_CONTINUE_STATUS = 0 | 1;
 
-const ServerStatus: { [key: string]: CALIL_SERVER_BOOK_STATUS } = {
-  SUCCESS: 0,
-  POLLING: 1,
-  SERVER_ERROR: -1,
-  NOT_EXIST: -2
-};
+// TODO: 文字列でユニオン型でOK
+// const ServerStatus: { [key: string]: CALIL_SERVER_BOOK_STATUS } = {
+//   SUCCESS: 0,
+//   POLLING: 1,
+//   SERVER_ERROR: -1,
+//   NOT_EXIST: -2
+// };
 
 const DEFAULT_CALIL_REQUEST: CalilRequest = {
   appkey: '',
   isbn: '',
   systemid: 'Tokyo_Setagaya',
   pollingDuration: 2000
-};
-
-const DEFAULT_CALIL_RESPONSE: CalilResponse = {
-  session: '',
-  continue: 0,
-  books: {
-    '4334926940': {
-      Tokyo_Setagaya: {
-        status: 'OK',
-        libkey: {
-          xxx: '貸出中'
-        },
-        reserveurl: ''
-      }
-    }
-  }
 };
 
 /**
@@ -194,9 +164,9 @@ const DEFAULT_CALIL_RESPONSE: CalilResponse = {
  *
  */
 export class Calil {
-  private readonly HOST: string = 'https://api.calil.jp/check';
+  private readonly HOST = 'https://api.calil.jp/check';
   private _request: CalilRequest = DEFAULT_CALIL_REQUEST;
-  private _serverStatus = 0;
+  private _serverBookStatus: CALIL_SERVER_BOOK_STATUS;
 
   get request() {
     return this._request;
@@ -206,11 +176,11 @@ export class Calil {
     this._request = request;
   }
 
-  set serverStatus(status: number) {
-    this._serverStatus = status;
+  set serverStatus(status: CALIL_SERVER_BOOK_STATUS) {
+    this._serverBookStatus = status;
   }
   get serverStatus() {
-    return this._serverStatus;
+    return this._serverBookStatus;
   }
 
   /**
@@ -257,7 +227,7 @@ export class Calil {
    */
   public async search(
     req: CalilRequest = this._request
-  ): Promise<ParsedResponse | null> {
+  ): Promise<ParsedResponse> {
     this._request = req;
 
     this.validateRequestOptions();
@@ -267,13 +237,11 @@ export class Calil {
      * Set the URL to APP_KEY, the ISBN of the book to be searched, and the SYSTEM_ID.
      */
     const url = `${this.HOST}?appkey=${this._request.appkey}&isbn=${this._request.isbn}&systemid=${this._request.systemid}&format=json`;
-
+    console.log(url)
     // Request
     const json: CalilResponse = await this.callApi(url);
-
     // APIから帰ってきたサーバーステータスを確認し、ポーリングが必要化どうか判定
     await this.checkServerStatus(json);
-
     return this._response;
   }
 
@@ -293,16 +261,20 @@ export class Calil {
     // Set session
     if (json.session) this.session = json.session;
 
-    if (this.serverStatus === ServerStatus.POLLING) {
+    if (this.serverStatus === 'POLINLING') {
       // Polling
       await this.sleep(this.request.pollingDuration);
       await this.poll();
-    } else if (this.serverStatus === ServerStatus.SUCCESS) {
-      console.log('json', json);
+    } else if (this.serverStatus === 'SUCCESS') {
       this.response = this.retrieveLibraryResponseFromJSON(json);
-    } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
+    } else if (this.serverStatus === 'NOT_EXIST') {
+      // TODO THIS IS NOT ERROR ⚠️
       console.error('Error - book is not exist');
-    } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
+    } else if (this.serverStatus === 'SERVER_ERROR') {
+      throw new CalilServerStatusError(500, {
+        // TODO: to keep clean
+        detailMessage: `Error was occured at Calil Server..\n This Error status code is generated at Calil Server.\n You shold referto https://calil.jp/doc/api_ref.html`
+      });
       console.error(`Error - server.status: ${this.serverStatus}`);
     } else {
       console.error(`Error - Unexpected Error was occured`);
@@ -360,7 +332,10 @@ export class Calil {
     let parsedObject: CalilResponse;
 
     return await fetch(url)
-      .then((res) => res.text())
+      .then((res) => {
+        if (res.status === 200) return res.text();
+        throw new CalilServerStatusError(res.status);
+      })
       .then((resText) => {
         const match = resText.match(/callback\((.*)\);/);
         if (!match) throw new Error('invalid JSONP response');
@@ -368,8 +343,7 @@ export class Calil {
         return parsedObject;
       })
       .catch((error) => {
-        console.error(error);
-        return DEFAULT_CALIL_RESPONSE;
+        throw new Error(error);
       });
   }
 
@@ -385,7 +359,8 @@ export class Calil {
       data.books[this._request.isbn][this._request.systemid].status;
 
     if (data.continue === 1) {
-      return ServerStatus.POLLING;
+      // TODO not use number. replace string. 'POLLING', 'NOT_EXIST', 'SUCCESS', 'SERVER_ERROR'
+      return 'POLINLING';
     } else if (data.continue === 0) {
       // 蔵書の有無を判定
       if (searchStatus === 'OK' || searchStatus === 'Cache') {
@@ -393,17 +368,18 @@ export class Calil {
           data.books[this._request.isbn][this._request.systemid].libkey;
 
         if (!libkey || !Object.keys(libkey).length) {
-          return ServerStatus.NOT_EXIST;
+          // TODO エラーではないのでnull,あるいは空オブジェクトで返す
+          return 'NOT_EXIST';
         } else {
-          return ServerStatus.SUCCESS;
+          return 'SUCCESS';
         }
       } else {
-        return ServerStatus.SERVER_ERROR;
+        return 'SERVER_ERROR';
       }
     } else {
       console.error(`Error: Failed to retrieve Status Code from JSON`);
     }
-    return ServerStatus.SERVER_ERROR;
+    return 'SERVER_ERROR';
   }
 
   private sleep(ms: number): Promise<void> {

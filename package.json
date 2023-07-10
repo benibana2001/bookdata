@@ -6,7 +6,8 @@
   "scripts": {
     "test": "npx ts-node example/index.ts",
     "build": "npx esbuild src/main.ts --bundle --format=esm --outdir=dist && npm run build:types",
-    "build:types": "npx tsc src/main.ts -declaration --emitDeclarationOnly --declarationDir dist"
+    "build:types": "npx tsc src/main.ts -declaration --emitDeclarationOnly --declarationDir dist",
+    "publish": "npm publish"
   },
   "repository": {
     "type": "git",

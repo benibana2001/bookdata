@@ -36,6 +36,10 @@ export class BeniBook {
     return (await this._openbd.search(isbn)).title;
   }
 
+  /**
+   * エラーをキャッチする必要あり
+   * You should use try-catch
+   */
   public async searchLibraryStock(request: CalilRequest) {
     return await this._calil.search(request);
   }
