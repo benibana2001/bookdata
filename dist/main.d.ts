@@ -23,6 +23,10 @@ export declare class BeniBook {
      * 本のタイトルを取得する
      */
     searchBookTitle(isbn: string): Promise<string>;
-    searchLibraryStock(request: CalilRequest): Promise<import("./Calil").ParsedResponse>;
+    /**
+     * エラーをキャッチする必要あり
+     * You should use try-catch
+     */
+    searchLibraryCollections(request: CalilRequest): Promise<import("./Calil").ParsedResponse>;
 }
 export declare const beniBook: BeniBook;

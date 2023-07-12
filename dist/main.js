@@ -28,38 +28,35 @@ var OpenBD = class {
 };
 var openbd = new OpenBD();
 
-// src/Calil.ts
-var ServerStatus = {
-  SUCCESS: 0,
-  POLLING: 1,
-  SERVER_ERROR: -1,
-  NOT_EXIST: -2
+// src/Errors.ts
+var CalilServerStatusError = class extends Error {
+  constructor(status, options) {
+    super(
+      `
+***
+
+        Server Response.status is ${status}
+failed to fetch Calil response.
+      
+***`
+    );
+    if (options)
+      this.options = options;
+  }
+  options;
 };
+
+// src/Calil.ts
 var DEFAULT_CALIL_REQUEST = {
   appkey: "",
   isbn: "",
-  systemid: "Tokyo_Setagaya",
+  systemid: null,
   pollingDuration: 2e3
-};
-var DEFAULT_CALIL_RESPONSE = {
-  session: "",
-  continue: 0,
-  books: {
-    "4334926940": {
-      Tokyo_Setagaya: {
-        status: "OK",
-        libkey: {
-          xxx: "\u8CB8\u51FA\u4E2D"
-        },
-        reserveurl: ""
-      }
-    }
-  }
 };
 var Calil = class {
   HOST = "https://api.calil.jp/check";
   _request = DEFAULT_CALIL_REQUEST;
-  _serverStatus = 0;
+  _serverBookStatus;
   get request() {
     return this._request;
   }
@@ -67,10 +64,10 @@ var Calil = class {
     this._request = request;
   }
   set serverStatus(status) {
-    this._serverStatus = status;
+    this._serverBookStatus = status;
   }
   get serverStatus() {
-    return this._serverStatus;
+    return this._serverBookStatus;
   }
   /**
    * Calilでの検索に時間がかかる場合に、Calilよりセッションが文字列として返ります。
@@ -110,13 +107,15 @@ var Calil = class {
    * Search book states
    *
    * Call api using fetch with JSONP.
+   * 
+   * 蔵書がない場合も空のオブジェクトを返す
    */
   async search(req = this._request) {
     this._request = req;
     this.validateRequestOptions();
     const url = `${this.HOST}?appkey=${this._request.appkey}&isbn=${this._request.isbn}&systemid=${this._request.systemid}&format=json`;
-    const json = await this.callApi(url);
-    await this.checkServerStatus(json);
+    const res = await this.callApi(url);
+    await this.checkServerStatusAndPoll(res);
     return this._response;
   }
   /**
@@ -128,20 +127,23 @@ var Calil = class {
    * If not finished, we should proceed polling process.
    *
    */
-  async checkServerStatus(json) {
-    this.serverStatus = this.retrieveStatusCodeFromJSON(json);
-    if (json.session)
-      this.session = json.session;
-    if (this.serverStatus === ServerStatus.POLLING) {
+  async checkServerStatusAndPoll(res) {
+    this.serverStatus = this.retrieveStatusCodeFromJSON(res);
+    if (res.session)
+      this.session = res.session;
+    if (this.serverStatus === "POLINLING") {
       await this.sleep(this.request.pollingDuration);
       await this.poll();
-    } else if (this.serverStatus === ServerStatus.SUCCESS) {
-      console.log("json", json);
-      this.response = this.retrieveLibraryResponseFromJSON(json);
-    } else if (this.serverStatus === ServerStatus.NOT_EXIST) {
-      console.error("Error - book is not exist");
-    } else if (this.serverStatus === ServerStatus.SERVER_ERROR) {
-      console.error(`Error - server.status: ${this.serverStatus}`);
+    } else if (this.serverStatus === "SUCCESS") {
+      this.response = this.parseResponse(res);
+    } else if (this.serverStatus === "SERVER_ERROR") {
+      const SERVER_STATUS_NUMBER = 500;
+      throw new CalilServerStatusError(SERVER_STATUS_NUMBER, {
+        // TODO: to keep clean
+        detailMessage: `Error was occured at Calil Server..
+ This Error status code is generated at Calil Server.
+ You shold referto https://calil.jp/doc/api_ref.html`
+      });
     } else {
       console.error(`Error - Unexpected Error was occured`);
     }
@@ -149,7 +151,7 @@ var Calil = class {
   async poll() {
     const url = `${this.HOST}?appkey=${this._request.appkey}&session=${this._session}&format=json`;
     const json = await this.callApi(url);
-    await this.checkServerStatus(json);
+    await this.checkServerStatusAndPoll(json);
   }
   /**
    *
@@ -158,30 +160,28 @@ var Calil = class {
    * and raw JSON data is difficult to display. So that this function parse JSON data to array.
    *
    */
-  retrieveLibraryResponseFromJSON(json) {
+  parseResponse(json) {
     const libkey = json.books[this._request.isbn][this._request.systemid].libkey;
     const reserveurl = json.books[this._request.isbn][this._request.systemid].reserveurl;
     const res = {
-      libkey: [],
+      libraryStock: [],
+      // 図書館ごとの情報を配列で保持する
       reserveurl,
       continue: 0
     };
-    let i = 1;
-    for (const key in libkey) {
+    let id = 1;
+    for (const name in libkey) {
       const d = {
-        libraryID: i,
-        libraryName: key,
-        borrowingStatus: libkey[key]
+        libraryID: id,
+        libraryName: name,
+        borrowingStatus: libkey[name]
       };
-      res.libkey.push(d);
-      i++;
+      res.libraryStock.push(d);
+      id++;
     }
     return res;
   }
   /**
-   *
-   * @param url Calil蔵書検索APIのURL
-   * @returns APIのレスポンス(JSONP)をパースして返却する
    *
    * APIからの返却値はJSONP形式であるため、JSONデータに変換して返している。
    * Since the value returned from the API is in JSONP format, it is converted to JSON data and returned.
@@ -189,15 +189,18 @@ var Calil = class {
    */
   async callApi(url) {
     let parsedObject;
-    return await fetch(url).then((res) => res.text()).then((resText) => {
+    return await fetch(url).then((res) => {
+      if (res.status === 200)
+        return res.text();
+      throw new CalilServerStatusError(res.status);
+    }).then((resText) => {
       const match = resText.match(/callback\((.*)\);/);
       if (!match)
         throw new Error("invalid JSONP response");
       parsedObject = JSON.parse(match[1]);
       return parsedObject;
     }).catch((error) => {
-      console.error(error);
-      return DEFAULT_CALIL_RESPONSE;
+      throw new Error(error);
     });
   }
   /**
@@ -208,22 +211,21 @@ var Calil = class {
   retrieveStatusCodeFromJSON(data) {
     const searchStatus = data.books[this._request.isbn][this._request.systemid].status;
     if (data.continue === 1) {
-      return ServerStatus.POLLING;
+      return "POLINLING";
     } else if (data.continue === 0) {
       if (searchStatus === "OK" || searchStatus === "Cache") {
-        const libkey = data.books[this._request.isbn][this._request.systemid].libkey;
-        if (!libkey || !Object.keys(libkey).length) {
-          return ServerStatus.NOT_EXIST;
-        } else {
-          return ServerStatus.SUCCESS;
-        }
-      } else {
-        return ServerStatus.SERVER_ERROR;
+        return "SUCCESS";
+      } else if (searchStatus === "Error") {
+        console.error(
+          `Error: Failed to retrieve Status Code from JSON
+searchStatsl: ${searchStatus}`
+        );
       }
     } else {
-      console.error(`Error: Failed to retrieve Status Code from JSON`);
+      `Error: Failed to retrieve Status Code from JSON
+searchStatsl: ${searchStatus}`;
     }
-    return ServerStatus.SERVER_ERROR;
+    return "SERVER_ERROR";
   }
   sleep(ms) {
     return new Promise((resolve) => setTimeout(resolve, ms));
@@ -251,7 +253,11 @@ var BeniBook = class {
   async searchBookTitle(isbn) {
     return (await this._openbd.search(isbn)).title;
   }
-  async searchLibraryStock(request) {
+  /**
+   * エラーをキャッチする必要あり
+   * You should use try-catch
+   */
+  async searchLibraryCollections(request) {
     return await this._calil.search(request);
   }
 };

@@ -22,7 +22,7 @@ const systemid = 'Tokyo_Setagaya';
 const pollingDuration = 500;
 
 try {
-  const res = await beniBook.searchLibraryStock({
+  const res = await beniBook.searchLibraryCollections({
     appkey: CALIL_KEY,
     isbn,
     systemid,

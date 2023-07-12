@@ -1,5 +1,6 @@
+import { Prefecture } from './CalilPrefecture';
 /**
- *
+ ****************************
  *  About Calil API
  *
  * カーリル図書館APIでは、全国のOPAC対応図書館のほぼすべてを網羅するリアルタイム蔵書検索機能を提供します。 また、全国の図書館の名称、住所、経緯度情報などをまとめた図書館データベースへのアクセスを提供します。
@@ -7,14 +8,14 @@
  *
  * https://calil.jp/doc/api_ref.html
  *
- */
-/**
- *
  * TEST URL - PLEASE SET YOUR APPKEY -
  *
  * https://api.calil.jp/check?appkey={}&isbn=4334926940&systemid=Tokyo_Setagaya&format=json
  * https://api.calil.jp/check?appkey={}&isbn=4834000826&systemid=Aomori_Pref&format=json
- *
+ ****************************
+ */
+/**
+ * 蔵書検索リクエスト
  */
 export interface CalilRequest {
     /**
@@ -43,8 +44,11 @@ export interface CalilRequest {
      * Polling interval (ms)
      * If there is no return from Calil-API, it is decided to reconnect(polling) after some time
      */
-    pollingDuration: number;
+    pollingDuration?: number;
 }
+/**
+ * 蔵書検索結果
+ */
 export interface CalilResponse {
     session: string;
     /**
@@ -54,12 +58,18 @@ export interface CalilResponse {
      *
      * continueが1で返ってきたときは、クライアントは戻り値のsessionをパラメータにして、再度checkをリクエストします。
      */
-    continue: CALIL_SERVER_CONTINUE_STATUS;
-    books: CalilResponseBook;
+    continue: CalilResponseContinueValue;
+    /**
+     * 蔵書検索結果
+     * リクエストしたISBNをキーとした検索結果
+     */
+    books: {
+        [key: string]: CalilResponsePrefecture;
+    };
 }
-type CalilResponseBook = {
-    [key: string]: CalilResponsePrefecture;
-};
+/**
+ * リクエストした年の名称をキーとした検索結果
+ */
 type CalilResponsePrefecture = {
     [key: string]: {
         status: CalilResponseSearchStatus;
@@ -67,30 +77,41 @@ type CalilResponsePrefecture = {
         libkey: CalilResponseLibkey;
     };
 };
-type CalilResponseSearchStatus = 'OK' | 'Cache' | 'Running' | 'Error';
-type CalilResponseLibkey = {
-    [key: string]: BorrowingStatus;
-};
-type BorrowingStatus = '貸出可' | '蔵書あり' | '館内のみ' | '貸出中' | '予約中' | '準備中' | '休館中' | '蔵書なし';
 /**
- *
- * Response from Calil API
- *
+ * Calilサーバーの検索状態. APIで定義された数値
+ */
+type CalilResponseContinueValue = 0 | 1;
+/**
+ * Calilサーバーの検索状態. これらはAPI側で定義された文字列
+ */
+type CalilResponseSearchStatus = 'OK' | 'Cache' | 'Running' | 'Error';
+/**
+ * 図書館名称をキーとした検索結果. API側で定義されている
+ */
+type CalilResponseLibkey = {
+    [key: string]: CalilResponseBorrowingStatus;
+};
+/**
+ * 本の貸出状態。 API側で定義された文字列
+ */
+type CalilResponseBorrowingStatus = '貸出可' | '蔵書あり' | '館内のみ' | '貸出中' | '予約中' | '準備中' | '休館中' | '蔵書なし';
+/**
+ * 検索結果を使いやすいようにパース
+ * 最終的に返す値
  */
 export interface ParsedResponse {
-    session?: string;
     continue: number;
     /**
-     *
+     * 蔵書の状態
      */
-    libkey: LibData[];
+    libraryStock: ParsedLibraryData[];
     reserveurl: string;
 }
 /**
- * 図書館情報
+ * 個々の図書館施設における蔵書の状態
  * Library Information
  */
-export interface LibData {
+export interface ParsedLibraryData {
     /**
      * 図書館のユニークID
      * Library Unique ID
@@ -105,9 +126,13 @@ export interface LibData {
      * 検索した本の貸出状況
      * Borrowing status of searched books
      */
-    borrowingStatus: BorrowingStatus;
+    borrowingStatus: CalilResponseBorrowingStatus;
 }
-type CALIL_SERVER_CONTINUE_STATUS = 0 | 1;
+/**
+ * Calilサーバーにおける本の検索状態
+ * State of book search on Calil server
+ */
+type CALIL_SERVER_BOOK_STATUS = 'SUCCESS' | 'POLINLING' | 'SERVER_ERROR';
 /**
  *
  * カーリルAPIに繋いで検索を行うクラス
@@ -117,11 +142,11 @@ type CALIL_SERVER_CONTINUE_STATUS = 0 | 1;
 export declare class Calil {
     private readonly HOST;
     private _request;
-    private _serverStatus;
+    private _serverBookStatus;
     get request(): CalilRequest;
     set request(request: CalilRequest);
-    set serverStatus(status: number);
-    get serverStatus(): number;
+    set serverStatus(status: CALIL_SERVER_BOOK_STATUS);
+    get serverStatus(): CALIL_SERVER_BOOK_STATUS;
     /**
      * Calilでの検索に時間がかかる場合に、Calilよりセッションが文字列として返ります。
      * このセッションは、２度目の呼び出し（ポーリング)の時に使用します。
@@ -139,8 +164,10 @@ export declare class Calil {
      * Search book states
      *
      * Call api using fetch with JSONP.
+     *
+     * 蔵書がない場合も空のオブジェクトを返す
      */
-    search(req?: CalilRequest): Promise<ParsedResponse | null>;
+    search(req?: CalilRequest): Promise<ParsedResponse>;
     /**
      *
      * Check server status
@@ -150,7 +177,7 @@ export declare class Calil {
      * If not finished, we should proceed polling process.
      *
      */
-    private checkServerStatus;
+    private checkServerStatusAndPoll;
     private poll;
     /**
      *
@@ -159,11 +186,8 @@ export declare class Calil {
      * and raw JSON data is difficult to display. So that this function parse JSON data to array.
      *
      */
-    private retrieveLibraryResponseFromJSON;
+    private parseResponse;
     /**
-     *
-     * @param url Calil蔵書検索APIのURL
-     * @returns APIのレスポンス(JSONP)をパースして返却する
      *
      * APIからの返却値はJSONP形式であるため、JSONデータに変換して返している。
      * Since the value returned from the API is in JSONP format, it is converted to JSON data and returned.
@@ -178,9 +202,5 @@ export declare class Calil {
     private retrieveStatusCodeFromJSON;
     private sleep;
 }
-type PrefecturePrefix = 'Tokyo_';
-type PrefectureName = 'Adachi' | 'Akiruno' | 'Akishima' | 'Arakawa' | 'Bunkyo' | 'Chiyoda' | 'Chofu' | 'Chuo' | 'Edogawa' | 'Fuchu' | 'Fussa' | 'Hachijo' | 'Hachioji' | 'Hamura' | 'Higashikurume' | 'Higashimurayama' | 'Higashiyamato' | 'Hino' | 'Hinode' | 'Inagi' | 'Itabashi' | 'Katsushika' | 'Kita' | 'Kiyose' | 'Kodaira' | 'Koganei' | 'Kokubunji' | 'Komae' | 'Koto' | 'Kunitachi' | 'Machida' | 'Meguro' | 'Minato' | 'Mitaka' | 'Mizuho' | 'Musashimurayama' | 'Musashino' | 'Nakano' | 'NDL' | 'Nerima' | 'Niijima' | 'Nishitokyo' | 'Okutama' | 'Ome' | 'Ota' | 'Koganei' | 'Setagaya' | 'Shibuya' | 'Shinagawa' | 'Shinjuku' | 'Suginami' | 'Sumida' | 'Tachikawa' | 'Taito' | 'Tama' | 'Toshima';
-type Prefecture = `${PrefecturePrefix}${PrefectureName}`;
-export declare const PrefectureList: [Prefecture, string][];
 export declare const calil: Calil;
 export {};

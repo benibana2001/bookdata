@@ -40,7 +40,7 @@ export class BeniBook {
    * エラーをキャッチする必要あり
    * You should use try-catch
    */
-  public async searchLibraryStock(request: CalilRequest) {
+  public async searchLibraryCollections(request: CalilRequest) {
     return await this._calil.search(request);
   }
 }
