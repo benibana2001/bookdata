@@ -1,17 +1,18 @@
 import { OpenBD, openbd } from './OpenBD';
 import { Calil, CalilRequest, calil } from './Calil';
+import { PrefectureList } from './CalilPrefecture';
 
 /**
- * 
+ *
  * ISBNをもとに書籍の情報を取得する
  * - 書影、タイトル、
  * - 図書館の在庫
- * 
- * 
+ *
+ *
  * Retrieve information about a book based on its ISBN
  * - Book cover imate, title,
  * - Book library (@Tokyo) inventory
- * 
+ *
  */
 export class BeniBook {
   private _openbd: OpenBD;
@@ -46,3 +47,5 @@ export class BeniBook {
 }
 
 export const beniBook = new BeniBook();
+
+export { PrefectureList };

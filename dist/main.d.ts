@@ -1,4 +1,5 @@
 import { CalilRequest } from './Calil';
+import { PrefectureList } from './CalilPrefecture';
 /**
  *
  * ISBNをもとに書籍の情報を取得する
@@ -30,3 +31,4 @@ export declare class BeniBook {
     searchLibraryCollections(request: CalilRequest): Promise<import("./Calil").ParsedResponse>;
 }
 export declare const beniBook: BeniBook;
+export { PrefectureList };
